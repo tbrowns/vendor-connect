@@ -1,54 +1,112 @@
-"use client"
+"use client";
 
-import { useState } from 'react'
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Textarea } from "@/components/ui/textarea"
+import { useState, useEffect } from "react";
+
+import { useUser } from "@clerk/nextjs";
+import { supabase } from "@/lib/supabase";
+
+import { Trash } from "lucide-react";
+
+import { AddProduct, UpdateProduct } from "@/app/products/product-management";
+
+import { Button } from "@/components/ui/button";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 
 type Product = {
-  id: number
-  name: string
-  description: string
-  price: number
-  inventory: number
-}
+  id: string;
+  name: string;
+  description: string;
+  price: number;
+  inventory: number;
+  category: string;
+  image_url: string;
+  vendor_id: string;
+};
 
 export default function VendorDashboard() {
-  const [products, setProducts] = useState<Product[]>([
-    { id: 1, name: "Wireless Earbuds", description: "High-quality wireless earbuds", price: 79.99, inventory: 100 },
-    { id: 2, name: "Smart Watch", description: "Feature-rich smart watch", price: 199.99, inventory: 50 },
-    { id: 3, name: "Laptop Stand", description: "Ergonomic laptop stand", price: 39.99, inventory: 200 },
-  ])
-  const [newProduct, setNewProduct] = useState<Omit<Product, 'id'>>({
-    name: '',
-    description: '',
-    price: 0,
-    inventory: 0
-  })
+  const { isSignedIn, user } = useUser();
+  const userId = user?.id || "none";
 
-  const addProduct = (e: React.FormEvent) => {
-    e.preventDefault()
-    const product = {
-      id: products.length + 1,
-      ...newProduct
+  const [products, setProducts] = useState<Product[]>([]);
+  const [totalRevenue, setTotalRevenue] = useState(0);
+
+  useEffect(() => {
+    if (!isSignedIn) return;
+    // Set up real-time subscription
+    const channel = supabase
+      .channel("custom-filter-channel")
+      .on(
+        "postgres_changes",
+        {
+          event: "*", // Listen to all changes (INSERT, UPDATE, DELETE)
+          schema: "public",
+          table: "product_list",
+          filter: `vendor_id=eq.${userId}`,
+        },
+        async (payload) => {
+          console.log("Change received!", payload);
+
+          // Fetch the latest units data
+          const { data: updatedProduct } = await supabase
+            .from("product_list")
+            .select("*")
+            .eq("vendor_id", userId);
+
+          if (updatedProduct) {
+            setProducts(updatedProduct);
+          }
+        }
+      )
+      .subscribe();
+
+    // Cleanup subscription on unmount
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [isSignedIn, userId]);
+
+  useEffect(() => {
+    if (!isSignedIn) return;
+
+    const fetchVendorDashboardData = async () => {
+      const { data, error } = await supabase.rpc("get_vendor_dashboard_data", {
+        input_vendor_id: userId,
+      });
+
+      console.log(data);
+
+      if (error) {
+        console.error("Error fetching dashboard data:", error);
+        return;
+      }
+
+      setTotalRevenue(data[0].total_revenue);
+      setProducts(data[0].products);
+    };
+
+    fetchVendorDashboardData();
+  }, [isSignedIn, userId]);
+
+  if (!isSignedIn) {
+    return <div>Please log in to access this page.</div>;
+  }
+
+  const deleteProduct = async (id: string) => {
+    const { error } = await supabase.from("products").delete().eq("id", id);
+    if (error) {
+      console.error("Error deleting product:", error.message);
+      return;
     }
-    setProducts([...products, product])
-    setNewProduct({ name: '', description: '', price: 0, inventory: 0 })
-  }
-
-  const updateProduct = (id: number, field: keyof Product, value: string | number) => {
-    setProducts(products.map(p => 
-      p.id === id ? { ...p, [field]: value } : p
-    ))
-  }
-
-  const deleteProduct = (id: number) => {
-    setProducts(products.filter(p => p.id !== id))
-  }
+  };
 
   return (
     <div className="container mx-auto px-4 py-8">
@@ -66,7 +124,7 @@ export default function VendorDashboard() {
                 <CardTitle>Total Sales</CardTitle>
               </CardHeader>
               <CardContent>
-                <p className="text-3xl font-bold">$12,345.67</p>
+                <p className="text-3xl font-bold">{`$${totalRevenue}`}</p>
               </CardContent>
             </Card>
             <Card>
@@ -93,49 +151,11 @@ export default function VendorDashboard() {
               <CardTitle>Manage Products</CardTitle>
             </CardHeader>
             <CardContent>
-              <form onSubmit={addProduct} className="grid gap-4 mb-6">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <Label htmlFor="name">Product Name</Label>
-                    <Input 
-                      id="name" 
-                      value={newProduct.name} 
-                      onChange={(e) => setNewProduct({...newProduct, name: e.target.value})}
-                      required
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="price">Price</Label>
-                    <Input 
-                      id="price" 
-                      type="number" 
-                      value={newProduct.price} 
-                      onChange={(e) => setNewProduct({...newProduct, price: parseFloat(e.target.value)})}
-                      required
-                    />
-                  </div>
-                </div>
-                <div>
-                  <Label htmlFor="description">Description</Label>
-                  <Textarea 
-                    id="description" 
-                    value={newProduct.description} 
-                    onChange={(e) => setNewProduct({...newProduct, description: e.target.value})}
-                    required
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="inventory">Initial Inventory</Label>
-                  <Input 
-                    id="inventory" 
-                    type="number" 
-                    value={newProduct.inventory} 
-                    onChange={(e) => setNewProduct({...newProduct, inventory: parseInt(e.target.value)})}
-                    required
-                  />
-                </div>
-                <Button type="submit">Add Product</Button>
-              </form>
+              <div className="flex items-center mx-4 space-x-2">
+                {/* Render the "Add Product" button. */}
+                <AddProduct />
+              </div>
+
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -150,34 +170,29 @@ export default function VendorDashboard() {
                   {products.map((product) => (
                     <TableRow key={product.id}>
                       <TableCell>
-                        <Input 
-                          value={product.name}
-                          onChange={(e) => updateProduct(product.id, 'name', e.target.value)}
-                        />
+                        <div>{product.name}</div>
                       </TableCell>
                       <TableCell>
-                        <Textarea 
-                          value={product.description}
-                          onChange={(e) => updateProduct(product.id, 'description', e.target.value)}
-                        />
+                        <div>{product.description}</div>
                       </TableCell>
                       <TableCell>
-                        <Input 
-                          type="number"
-                          value={product.price}
-                          onChange={(e) => updateProduct(product.id, 'price', parseFloat(e.target.value))}
-                        />
+                        <div>{product.price}</div>
                       </TableCell>
                       <TableCell>
-                        <Input 
-                          type="number" 
-                          value={product.inventory}
-                          onChange={(e) => updateProduct(product.id, 'inventory', parseInt(e.target.value))}
-                        />
+                        <div>{product.inventory}</div>
                       </TableCell>
                       <TableCell>
-                        <Button variant="destructive" size="sm" onClick={() => deleteProduct(product.id)}>
-                          Delete
+                        <UpdateProduct
+                          product={product}
+                          setProducts={setProducts}
+                        />
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => deleteProduct(product.id)}
+                          className={`hover:bg-red-400 mx-4`}
+                        >
+                          <Trash></Trash>
                         </Button>
                       </TableCell>
                     </TableRow>
@@ -212,7 +227,9 @@ export default function VendorDashboard() {
                     <TableCell>Pending</TableCell>
                     <TableCell>$99.99</TableCell>
                     <TableCell>
-                      <Button variant="outline" size="sm">Process</Button>
+                      <Button variant="outline" size="sm">
+                        Process
+                      </Button>
                     </TableCell>
                   </TableRow>
                   <TableRow>
@@ -222,7 +239,9 @@ export default function VendorDashboard() {
                     <TableCell>Shipped</TableCell>
                     <TableCell>$149.99</TableCell>
                     <TableCell>
-                      <Button variant="outline" size="sm">View</Button>
+                      <Button variant="outline" size="sm">
+                        View
+                      </Button>
                     </TableCell>
                   </TableRow>
                 </TableBody>
@@ -232,6 +251,5 @@ export default function VendorDashboard() {
         </TabsContent>
       </Tabs>
     </div>
-  )
+  );
 }
-
