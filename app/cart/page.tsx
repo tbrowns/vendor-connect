@@ -13,6 +13,23 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useUser } from "@clerk/nextjs";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
 
 export default function Cart() {
   const { user } = useUser();
@@ -93,26 +110,9 @@ export default function Cart() {
 
 import { useState } from "react";
 import { handleSTKPush } from "../actions/stk-push";
+import { VisuallyHidden } from "@radix-ui/react-visually-hidden";
 
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
-import { Label } from "@/components/ui/label";
-
-export function ShowCheckoutForm({ total }: { total: number }) {
+function ShowCheckoutForm({ total }: { total: number }) {
   const [open, setOpen] = useState(false);
   const { user } = useUser();
 
@@ -139,13 +139,17 @@ export function ShowCheckoutForm({ total }: { total: number }) {
         <Button>Proceed to Checkout</Button>
       </DialogTrigger>
       <DialogContent>
+        <VisuallyHidden>
+          <DialogTitle>Checkout</DialogTitle>
+        </VisuallyHidden>
+
         <CheckOutForm total={total} />
       </DialogContent>
     </Dialog>
   );
 }
 
-export function CheckOutForm({ total }: { total: number }) {
+function CheckOutForm({ total }: { total: number }) {
   const [phoneNumber, setPhoneNumber] = useState("");
   const [amount, setAmount] = useState("");
   const [loading, setLoading] = useState(false);
